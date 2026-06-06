@@ -6,8 +6,8 @@ services:
     image: postgres:15-alpine
     container_name: trc-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -16,7 +16,7 @@ services:
     networks:
       - trc-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -76,8 +76,8 @@ services:
     container_name: trc-minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -98,7 +98,7 @@ services:
         condition: service_healthy
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
       /usr/bin/mc mb myminio/media-uploads;
       /usr/bin/mc anonymous set public myminio/media-uploads;
       exit 0;
@@ -114,7 +114,7 @@ services:
     container_name: trc-identity-service
     environment:
       - PORT=3001
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/user_db
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/user_db
     ports:
       - "3001:3001"
     depends_on:
@@ -130,12 +130,12 @@ services:
     container_name: trc-content-service
     environment:
       - PORT=3002
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/content_db
-      - MINIO_ENDPOINT=http://minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
-      - MINIO_PUBLIC_URL=http://localhost:9000
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/content_db
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     ports:
       - "3002:3002"
     depends_on:
@@ -155,9 +155,9 @@ services:
     container_name: trc-feed-service
     environment:
       - PORT=3003
-      - REDIS_URL=redis://redis:6379
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - REDIS_URL=${REDIS_URL}
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
     ports:
       - "3003:3003"
     depends_on:
@@ -177,7 +177,7 @@ services:
     container_name: trc-community-service
     environment:
       - PORT=3004
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/moderation_db
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/moderation_db
     ports:
       - "3004:3004"
     depends_on:

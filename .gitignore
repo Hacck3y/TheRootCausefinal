@@ -1,0 +1,71 @@
+# Dependency Directories
+node_modules/
+jspm_packages/
+web_modules/
+
+# Build and Output Files
+dist/
+build/
+out/
+.next/
+.serverless/
+.docusaurus/
+.cache/
+.parcel-cache/
+.turbo/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Python Files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Local Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Editor and IDE Settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS Files
+.DS_Store
+Thumbs.db
