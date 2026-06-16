@@ -1,7 +1,7 @@
 {
-  "name": "the-root-cause",
+  "name": "the-civic-x",
   "version": "1.0.0",
-  "description": "Civic intelligence platform for documenting public problems and analyzing root causes",
+  "description": "Civic intelligence platform for documenting public problems and analyzing root causes - The CivicX",
   "private": true,
   "workspaces": [
     "apps/*",

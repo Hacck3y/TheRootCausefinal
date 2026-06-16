@@ -1,6 +1,6 @@
-# The Root Cause
+# The CivicX
 
-**The Root Cause** is a civic intelligence platform for documenting public problems, analysing their root causes, proposing solutions, debating ideas, and turning the strongest proposals into lawful civic action.
+**The CivicX** is a civic intelligence platform for documenting public problems, analysing their root causes, proposing solutions, debating ideas, and turning the strongest proposals into lawful civic action.
 
 This project is not just a discussion space. It is the foundation for a future platform where citizens can move beyond shallow political arguments and participate in structured civic problem-solving.
 
@@ -24,7 +24,7 @@ See a problem → Submit it → Analyse the root cause → Propose a solution �
 ## Why This Exists
 
 Public discussions often stop at outrage, blame, or political tribalism.
-The Root Cause is designed to move the conversation forward.
+The CivicX is designed to move the conversation forward.
 
 Instead of only asking:
 
@@ -53,7 +53,7 @@ The goal is to convert public frustration into public intelligence.
 
 ## Who This Is For
 
-The Root Cause is for citizens, builders, researchers, students, creators, reformers, and anyone tired of shallow political shouting.
+The CivicX is for citizens, builders, researchers, students, creators, reformers, and anyone tired of shallow political shouting.
 
 It is for people who want a serious place for:
 
@@ -67,7 +67,7 @@ It is for people who want a serious place for:
 
 ## Project Status
 
-This repository is the early technical foundation of **The Root Cause**.
+This repository is the early technical foundation of **The CivicX**.
 
 The product is being developed as a platform for structured civic participation, where users can submit problems, analyse causes, draft solution blueprints, review proposals, and support actionable mandates.
 
@@ -75,7 +75,7 @@ The product is being developed as a platform for structured civic participation,
 
 A citizen should be able to see a public problem, submit it to the platform, help identify the root cause, collaborate on a solution, and turn that solution into a clear, lawful, community-backed action.
 
-That is the mission of **The Root Cause**.
+That is the mission of **The CivicX**.
 
 ---
 

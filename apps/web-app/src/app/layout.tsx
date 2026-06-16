@@ -2,7 +2,7 @@ import React from 'react';
 import './globals.css';
 
 export const metadata = {
-  title: 'The Root Cause - Civic Platform',
+  title: 'The CivicX - Civic Platform',
   description: 'Document public problems, analyse root causes, propose solutions, and turn them into civic action.',
 };
 
