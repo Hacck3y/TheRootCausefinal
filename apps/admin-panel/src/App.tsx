@@ -402,6 +402,15 @@ export default function App() {
           </select>
         </div>
 
+        {adminToken && (
+          <button
+            onClick={handleAdminLogout}
+            style={{ marginBottom: '1rem', background: 'transparent', color: '#f87171', border: '1px solid rgba(248,113,113,0.4)', padding: '8px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}
+          >
+            Log out
+          </button>
+        )}
+
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button 
             onClick={() => setActiveTab('submissions')}
