@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, status, Depends
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -12,6 +12,8 @@ from typing import Optional, List
 from io import BytesIO
 import urllib.request
 import urllib.error
+
+from auth import require_auth, require_admin
 
 app = FastAPI(title="Content Service")
 
@@ -151,8 +153,14 @@ async def create_submission(
     simulatedLatitude: Optional[float] = Form(None),
     simulatedLongitude: Optional[float] = Form(None),
     simulatedTimestamp: Optional[str] = Form(None),
-    media: Optional[UploadFile] = File(None)
+    media: Optional[UploadFile] = File(None),
+    principal: Optional[dict] = Depends(require_auth)
 ):
+    # When auth is enforced, trust the token's subject as the author rather
+    # than the client-supplied authorId (prevents identity spoofing).
+    if principal and principal.get("sub"):
+        authorId = principal["sub"]
+
     # Enforce category validator
     valid_categories = {"Bureaucratic", "Executive", "Infrastructure", "Environmental", "Policy", "Other"}
     if category not in valid_categories:
@@ -321,7 +329,7 @@ async def get_submission(sub_id: int):
         conn.close()
 
 @app.post("/submissions/{sub_id}/review")
-async def review_submission(sub_id: int, payload: ReviewRequest):
+async def review_submission(sub_id: int, payload: ReviewRequest, _admin: Optional[dict] = Depends(require_admin)):
     if payload.status not in ["Accepted", "Rejected"]:
         raise HTTPException(status_code=400, detail="Invalid review status. Must be Accepted or Rejected.")
 
@@ -385,7 +393,7 @@ async def review_submission(sub_id: int, payload: ReviewRequest):
         conn.close()
 
 @app.post("/submissions/{sub_id}/club")
-async def club_submission(sub_id: int, payload: ClubRequest):
+async def club_submission(sub_id: int, payload: ClubRequest, _admin: Optional[dict] = Depends(require_admin)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -435,7 +443,7 @@ async def list_clubbed_siblings(sub_id: int):
         conn.close()
 
 @app.post("/submissions/{sub_id}/dispute")
-async def file_dispute(sub_id: int, payload: DisputeRequest):
+async def file_dispute(sub_id: int, payload: DisputeRequest, _user: Optional[dict] = Depends(require_auth)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -457,7 +465,7 @@ async def file_dispute(sub_id: int, payload: DisputeRequest):
         conn.close()
 
 @app.get("/disputes")
-async def list_disputes():
+async def list_disputes(_admin: Optional[dict] = Depends(require_admin)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:

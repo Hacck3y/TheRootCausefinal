@@ -12,9 +12,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="API Gateway", lifespan=lifespan)
 
+# Allowed browser origins. Set CORS_ORIGINS as a comma-separated list in
+# production, e.g. "https://app.yourdomain.com,https://admin.yourdomain.com".
+# Defaults to the local dev frontends.
+_default_origins = "http://localhost:3000,http://localhost:3005"
+CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", _default_origins).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

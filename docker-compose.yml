@@ -115,6 +115,17 @@ services:
     environment:
       - PORT=3001
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/user_db
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-false}
+      - JWT_SECRET=${JWT_SECRET:-dev-insecure-secret-change-me}
+      - JWT_EXPIRY_SECONDS=${JWT_EXPIRY_SECONDS:-604800}
+      - DEV_MODE=${DEV_MODE:-true}
+      - ALLOW_MOCK_AUTH=${ALLOW_MOCK_AUTH:-true}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
     ports:
       - "3001:3001"
     depends_on:
@@ -136,6 +147,8 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-false}
+      - JWT_SECRET=${JWT_SECRET:-dev-insecure-secret-change-me}
     ports:
       - "3002:3002"
     depends_on:
@@ -178,6 +191,8 @@ services:
     environment:
       - PORT=3004
       - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/moderation_db
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-false}
+      - JWT_SECRET=${JWT_SECRET:-dev-insecure-secret-change-me}
     ports:
       - "3004:3004"
     depends_on:
@@ -198,6 +213,7 @@ services:
       - CONTENT_SERVICE_URL=http://content-service:3002
       - FEED_SERVICE_URL=http://feed-service:3003
       - COMMUNITY_SERVICE_URL=http://community-service:3004
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:3005}
     ports:
       - "8000:8000"
     depends_on:

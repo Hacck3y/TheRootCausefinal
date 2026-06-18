@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from "react";
 
-// API Gateway base URL
-const API_BASE = "http://localhost:8000/api/v1";
+// API Gateway base URL. Configurable at build time via NEXT_PUBLIC_API_URL
+// (e.g. https://api.yourdomain.com). Falls back to localhost for dev.
+const API_ROOT = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = `${API_ROOT}/api/v1`;
 
 interface User {
   id: string;
@@ -152,7 +154,15 @@ export default function HomePage() {
   // Fetch helper wrapper catching offline cases
   const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, options);
+      // Attach the signed JWT (if present) so the gateway/services can
+      // authenticate the request when AUTH_REQUIRED is enabled server-side.
+      const token = typeof window !== "undefined" ? localStorage.getItem("trc_token") : null;
+      const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+      const mergedOptions: RequestInit = {
+        ...options,
+        headers: { ...authHeaders, ...(options.headers as Record<string, string> | undefined) },
+      };
+      const res = await fetch(`${API_BASE}${endpoint}`, mergedOptions);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `HTTP error ${res.status}`);
@@ -251,6 +261,11 @@ export default function HomePage() {
       })
     });
 
+    // Persist the signed JWT issued at login for authenticated requests.
+    if (loginRes?.token) {
+      localStorage.setItem("trc_token", loginRes.token);
+    }
+
     const verifiedUser = verifyRes.user;
     setCurrentUser(verifiedUser);
     localStorage.setItem("trc_session", JSON.stringify(verifiedUser));
@@ -285,6 +300,7 @@ export default function HomePage() {
   const handleLogout = () => {
     setCurrentUser(null);
     localStorage.removeItem("trc_session");
+    localStorage.removeItem("trc_token");
     setIsAnonProfile(false);
   };
 

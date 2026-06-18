@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:8000/api/v1';
+// Configurable at build time via VITE_API_URL (e.g. https://api.yourdomain.com).
+const API_ROOT = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8000';
+const API_BASE = `${API_ROOT}/api/v1`;
+// When 'true', the admin panel shows a login screen and requires an admin JWT.
+// Pair this with AUTH_REQUIRED=true on the backend services for production.
+const REQUIRE_LOGIN = (import.meta as any).env?.VITE_REQUIRE_ADMIN_LOGIN === 'true';
 
 interface Submission {
   id: number;
@@ -59,6 +64,42 @@ export default function App() {
   const [usingMock, setUsingMock] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
 
+  // Admin authentication
+  const [adminToken, setAdminToken] = useState<string | null>(
+    typeof window !== 'undefined' ? localStorage.getItem('trc_admin_token') : null
+  );
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+
+  const authHeader = (): Record<string, string> =>
+    adminToken ? { Authorization: `Bearer ${adminToken}` } : {};
+
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    try {
+      const res = await fetch(`${API_BASE}/auth/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Invalid credentials');
+      }
+      const data = await res.json();
+      localStorage.setItem('trc_admin_token', data.token);
+      setAdminToken(data.token);
+    } catch (err: any) {
+      setLoginError(err.message || 'Login failed');
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('trc_admin_token');
+    setAdminToken(null);
+  };
+
   // Selector for active list depending on selected tab
   const getActiveItems = (): any[] => {
     if (activeTab === 'submissions') return pendingSubs;
@@ -116,7 +157,7 @@ export default function App() {
               const payload = { status: 'Rejected', reason: entered };
               fetch(`${API_BASE}/content/submissions/${sub.id}/review`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...authHeader() },
                 body: JSON.stringify(payload)
               }).then(() => {
                 setPendingSubs(prev => prev.filter(s => s.id !== sub.id));
@@ -156,7 +197,11 @@ export default function App() {
 
   const apiFetch = async (endpoint: string, options: RequestInit = {}) => {
     try {
-      const res = await fetch(`${API_BASE}${endpoint}`, options);
+      const mergedOptions: RequestInit = {
+        ...options,
+        headers: { ...authHeader(), ...(options.headers as Record<string, string> | undefined) },
+      };
+      const res = await fetch(`${API_BASE}${endpoint}`, mergedOptions);
       if (!res.ok) {
         throw new Error(`HTTP error ${res.status}`);
       }
@@ -305,9 +350,37 @@ export default function App() {
     return {};
   };
 
+  // Login gate — shown when admin login is required and no token is stored.
+  if (REQUIRE_LOGIN && !adminToken) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', backgroundColor: '#030712', color: '#f3f4f6', fontFamily: 'Outfit, sans-serif' }}>
+        <form onSubmit={handleAdminLogin} style={{ width: '320px', padding: '2rem', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px' }}>
+          <h2 style={{ color: '#60a5fa', margin: '0 0 1.5rem 0', fontSize: '1.5rem' }}>CivicX Admin Login</h2>
+          <input
+            placeholder="Username"
+            value={loginForm.username}
+            onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+            style={{ width: '100%', boxSizing: 'border-box', marginBottom: '10px', padding: '10px', background: '#1f2937', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px' }}
+          />
+          <input
+            placeholder="Password"
+            type="password"
+            value={loginForm.password}
+            onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+            style={{ width: '100%', boxSizing: 'border-box', marginBottom: '14px', padding: '10px', background: '#1f2937', color: '#fff', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px' }}
+          />
+          {loginError && <p style={{ color: '#f87171', fontSize: '0.85rem', margin: '0 0 12px 0' }}>{loginError}</p>}
+          <button type="submit" style={{ width: '100%', padding: '10px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}>
+            Sign in
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#030712', color: '#f3f4f6', fontFamily: 'Outfit, sans-serif' }}>
-      
+
       {/* Sidebar */}
       <aside style={{ width: '260px', backgroundColor: '#111827', borderRight: '1px solid rgba(255,255,255,0.06)', padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
         <h2 style={{ color: '#60a5fa', margin: '0 0 1.5rem 0', fontSize: '1.6rem', fontWeight: 'bold' }}>

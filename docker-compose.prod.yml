@@ -1,0 +1,158 @@
+# Production overrides for The CivicX.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+#
+# This layer adds: real auth enforcement, restart policies, resource limits,
+# log rotation, and build-time API URLs for the frontends. All sensitive values
+# come from the .env file (see .env.example / SETUP_TODO.md). Nothing secret is
+# hardcoded here.
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  redis:
+    <<: *restart
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  rabbitmq:
+    <<: *restart
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  elasticsearch:
+    <<: *restart
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  minio:
+    <<: *restart
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  identity-service:
+    <<: *restart
+    logging: *default-logging
+    environment:
+      - PORT=3001
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/user_db
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-true}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRY_SECONDS=${JWT_EXPIRY_SECONDS:-604800}
+      - DEV_MODE=${DEV_MODE:-false}
+      - ALLOW_MOCK_AUTH=${ALLOW_MOCK_AUTH:-false}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  content-service:
+    <<: *restart
+    logging: *default-logging
+    environment:
+      - PORT=3002
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/content_db
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT}
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL}
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-true}
+      - JWT_SECRET=${JWT_SECRET}
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  feed-service:
+    <<: *restart
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  community-service:
+    <<: *restart
+    logging: *default-logging
+    environment:
+      - PORT=3004
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/moderation_db
+      - AUTH_REQUIRED=${AUTH_REQUIRED:-true}
+      - JWT_SECRET=${JWT_SECRET}
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  api-gateway:
+    <<: *restart
+    logging: *default-logging
+    environment:
+      - PORT=8000
+      - IDENTITY_SERVICE_URL=http://identity-service:3001
+      - CONTENT_SERVICE_URL=http://content-service:3002
+      - FEED_SERVICE_URL=http://feed-service:3003
+      - COMMUNITY_SERVICE_URL=http://community-service:3004
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  web-app:
+    <<: *restart
+    logging: *default-logging
+    build:
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL}
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  admin-panel:
+    <<: *restart
+    logging: *default-logging
+    build:
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL}
+        VITE_REQUIRE_ADMIN_LOGIN: "true"
+    deploy:
+      resources:
+        limits:
+          memory: 128m

@@ -1,19 +1,75 @@
-from fastapi import FastAPI, HTTPException, status
+# The CivicX — Identity Service (auth, profiles, scoring, notifications)
+from fastapi import FastAPI, HTTPException, status, Depends
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import hashlib
+import hmac
 import os
 import random
 from typing import Optional, List
+
+from auth import create_access_token, require_auth
 
 app = FastAPI(title="Identity Service")
 
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/user_db")
 
+# Feature flags / secrets (see SETUP_TODO.md)
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"          # exposes OTP in responses
+ALLOW_MOCK_AUTH = os.getenv("ALLOW_MOCK_AUTH", "true").lower() == "true"  # accept client-provided OAuth payload
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")                 # when set, Google ID tokens are verified
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin")               # CHANGE in production
+
 # Simple OTP storage in-memory for validation (in a real app, use Redis/cache)
 # Map: phone_number -> otp_code
 OTP_STORE = {}
+
+
+def verify_google_id_token(token: str) -> Optional[dict]:
+    """Verify a Google ID token when GOOGLE_CLIENT_ID is configured.
+
+    Returns the verified claims (with at least 'email' and 'name'), or raises
+    HTTPException on failure. Returns None when verification is not configured.
+    """
+    if not GOOGLE_CLIENT_ID:
+        return None
+    try:
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        claims = google_id_token.verify_oauth2_token(
+            token, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+        return {"email": claims.get("email"), "name": claims.get("name") or claims.get("email")}
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Google token verification failed: {e}")
+
+
+def send_otp_sms(phone: str, otp: str) -> None:
+    """Dispatch the OTP via an SMS provider when configured.
+
+    Supports Twilio out of the box (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+    and TWILIO_FROM_NUMBER). If no provider is configured, this is a no-op and
+    the OTP is only surfaced via DEV_MODE. See SETUP_TODO.md.
+    """
+    sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+    if not (sid and auth_token and from_number):
+        if not DEV_MODE:
+            print("WARNING: No SMS provider configured; OTP not delivered. Set TWILIO_* env vars.")
+        return
+    try:
+        from twilio.rest import Client
+        client = Client(sid, auth_token)
+        client.messages.create(
+            body=f"Your CivicX verification code is {otp}",
+            from_=from_number,
+            to=phone,
+        )
+    except Exception as e:
+        print(f"Failed to send OTP SMS via Twilio: {e}")
 
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -68,26 +124,43 @@ async def login_oauth(payload: OAuthLoginRequest):
     if payload.provider.lower() != "google":
         raise HTTPException(status_code=400, detail="Only Google authentication is supported.")
 
+    # Determine the trusted identity. In production (GOOGLE_CLIENT_ID set), the
+    # email/name come from the verified Google ID token, not the request body.
+    email = payload.email
+    name = payload.name
+    verified = verify_google_id_token(payload.token)
+    if verified:
+        email = verified["email"]
+        name = verified["name"]
+    elif not ALLOW_MOCK_AUTH:
+        raise HTTPException(
+            status_code=401,
+            detail="OAuth verification is required. Configure GOOGLE_CLIENT_ID or enable ALLOW_MOCK_AUTH for development.",
+        )
+
+    if not email:
+        raise HTTPException(status_code=400, detail="A valid email is required.")
+
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
             # Check if user exists
-            cur.execute("SELECT * FROM users WHERE email = %s;", (payload.email,))
+            cur.execute("SELECT * FROM users WHERE email = %s;", (email,))
             user = cur.fetchone()
 
             if not user:
                 # Create user
-                user_id = "u_" + hashlib.md5(payload.email.encode()).hexdigest()[:12]
-                public_username = payload.name.lower().replace(" ", "_") + "_" + user_id[-4:]
+                user_id = "u_" + hashlib.md5(email.encode()).hexdigest()[:12]
+                public_username = name.lower().replace(" ", "_") + "_" + user_id[-4:]
                 anonymous_username = "anon_" + user_id[-8:]
-                
+
                 cur.execute(
                     """
                     INSERT INTO users (id, name, email, public_username, anonymous_username, score, title, two_fa_enabled)
                     VALUES (%s, %s, %s, %s, %s, 0, 'Sewak', FALSE)
                     RETURNING *;
                     """,
-                    (user_id, payload.name, payload.email, public_username, anonymous_username)
+                    (user_id, name, email, public_username, anonymous_username)
                 )
                 user = cur.fetchone()
                 conn.commit()
@@ -95,7 +168,7 @@ async def login_oauth(payload: OAuthLoginRequest):
         return {
             "message": "Login successful",
             "user": user,
-            "token": f"jwt_{user['id']}"
+            "token": create_access_token(user["id"], role="user"),
         }
     except Exception as e:
         conn.rollback()
@@ -111,15 +184,20 @@ async def request_otp(payload: RequestOTPRequest):
     # Simple simulated OTP generation
     otp = str(random.randint(100000, 999999))
     OTP_STORE[payload.phone] = otp
-    
-    # In a production environment, this would call Twilio or another SMS API.
-    # For verification, we expose it in response for sandbox testing ease.
-    return {
+
+    # In production this dispatches the OTP via an SMS provider (see
+    # send_otp_sms / SETUP_TODO.md). The raw OTP is only returned in the
+    # response when DEV_MODE is enabled, never in production.
+    send_otp_sms(payload.phone, otp)
+
+    response = {
         "message": "OTP generated successfully",
         "phone": payload.phone,
-        "otp": otp, # Return for testing/mock purposes
-        "info": "This verification process creates a SHA-256 hash of your phone number to prevent duplicate registrations. We do NOT store your phone number or the OTP code."
+        "info": "This verification process creates a SHA-256 hash of your phone number to prevent duplicate registrations. We do NOT store your phone number or the OTP code.",
     }
+    if DEV_MODE:
+        response["otp"] = otp  # development convenience only
+    return response
 
 @app.post("/verify")
 async def verify(payload: VerificationRequest):
@@ -304,6 +382,48 @@ async def mark_notification_read(notif_id: int):
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
     finally:
         conn.close()
+
+class AdminLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/admin/login")
+async def admin_login(payload: AdminLoginRequest):
+    """Authenticate a staff/admin user and issue an admin-role JWT.
+
+    Credentials are configured via ADMIN_USERNAME / ADMIN_PASSWORD. Compared
+    in constant time to avoid timing attacks.
+    """
+    user_ok = hmac.compare_digest(payload.username, ADMIN_USERNAME)
+    pass_ok = hmac.compare_digest(payload.password, ADMIN_PASSWORD)
+    if not (user_ok and pass_ok):
+        raise HTTPException(status_code=401, detail="Invalid administrator credentials.")
+    return {
+        "message": "Admin login successful",
+        "token": create_access_token(f"admin:{payload.username}", role="admin"),
+        "role": "admin",
+    }
+
+
+@app.get("/me")
+async def me(principal: Optional[dict] = Depends(require_auth)):
+    """Return the current user derived from the bearer token."""
+    if not principal:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    if principal.get("role") == "admin":
+        return {"id": principal.get("sub"), "role": "admin"}
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE id = %s;", (principal.get("sub"),))
+            user = cur.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found.")
+            return user
+    finally:
+        conn.close()
+
 
 @app.get("/health")
 async def health():

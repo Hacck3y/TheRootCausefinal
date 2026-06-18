@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends
 from pydantic import BaseModel
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -8,6 +8,8 @@ import json
 import urllib.request
 import urllib.error
 from typing import Optional, List
+
+from auth import require_auth, require_admin
 
 app = FastAPI(title="Community Service")
 
@@ -112,7 +114,11 @@ class SurveyVoteRequest(BaseModel):
     optionSelected: str
 
 @app.post("/votes")
-async def create_vote(payload: VoteRequest):
+async def create_vote(payload: VoteRequest, principal: Optional[dict] = Depends(require_auth)):
+    # When auth is enforced, trust the token subject as the voter.
+    if principal and principal.get("sub"):
+        payload.voterId = principal["sub"]
+
     # Requirement: Comment minimum length (constructive comment minimum 15 characters)
     if not payload.reason or len(payload.reason.strip()) < 15:
         raise HTTPException(
@@ -225,7 +231,7 @@ async def list_votes_for_submission(sub_id: int):
         conn.close()
 
 @app.post("/reports")
-async def create_report(payload: ReportRequest):
+async def create_report(payload: ReportRequest, _user: Optional[dict] = Depends(require_auth)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -247,7 +253,7 @@ async def create_report(payload: ReportRequest):
         conn.close()
 
 @app.get("/reports")
-async def list_reports():
+async def list_reports(_admin: Optional[dict] = Depends(require_admin)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -259,7 +265,7 @@ async def list_reports():
         conn.close()
 
 @app.post("/reports/{report_id}/resolve")
-async def resolve_report(report_id: int, status: str = "Resolved", banUser: bool = False, userId: Optional[str] = None):
+async def resolve_report(report_id: int, status: str = "Resolved", banUser: bool = False, userId: Optional[str] = None, _admin: Optional[dict] = Depends(require_admin)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -284,7 +290,7 @@ async def resolve_report(report_id: int, status: str = "Resolved", banUser: bool
         conn.close()
 
 @app.post("/surveys")
-async def create_survey(payload: SurveyRequest):
+async def create_survey(payload: SurveyRequest, _admin: Optional[dict] = Depends(require_admin)):
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -318,7 +324,9 @@ async def list_surveys():
         conn.close()
 
 @app.post("/surveys/{survey_id}/vote")
-async def vote_survey(survey_id: int, payload: SurveyVoteRequest):
+async def vote_survey(survey_id: int, payload: SurveyVoteRequest, principal: Optional[dict] = Depends(require_auth)):
+    if principal and principal.get("sub"):
+        payload.userId = principal["sub"]
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:

@@ -156,34 +156,87 @@ All databases, caches, queues, and services map to standard ports on the local n
 
 ### Local Environment Setup
 
-Ensure you have **Docker Desktop**, **Python (v3.11+)**, and **Node.js (v20+)** installed on your system.
+Ensure you have **Docker Engine + Compose plugin**, **Python (v3.11+)**, and **Node.js (v20+)** installed. On Linux, also raise the vm map count Elasticsearch needs: `sudo sysctl -w vm.max_map_count=262144`.
 
-#### 1. Running the Complete Stack
+#### 1. Environment file
 
-To spin up all services, frontends, and backend datastores in Docker, run:
+Copy the template and (for anything beyond a quick local test) fill in real secrets:
 ```bash
-npm run dev:apps
+cp .env.example .env
+./scripts/generate-secrets.sh   # prints strong random values to paste in
 ```
-This builds each application service container and runs them in a unified network.
+A `.env` is created for you on first setup with random secrets and development
+defaults (`AUTH_REQUIRED=false`, `ALLOW_MOCK_AUTH=true`, `DEV_MODE=true`) so the
+stack runs immediately. See **[SETUP_TODO.md](./SETUP_TODO.md)** for the full
+production checklist.
 
-#### 2. Running Only Databases (Infrastructure)
+#### 2. Running the Complete Stack
 
-If you prefer to debug code locally (e.g. running a microservice in watch mode using `npm run dev`), run:
 ```bash
-npm run dev:infra
+make up            # build & start everything (development)
+# equivalent: docker compose up --build -d
 ```
-This boots Postgres, Redis, RabbitMQ, Elasticsearch, and MinIO in the background.
 
-#### 3. Accessing Dashboards
-*   **RabbitMQ Portal**: Navigate to [http://localhost:15672](http://localhost:15672) (User: `guest`, Pass: `guest`) to inspect active queues.
-*   **MinIO Console**: Navigate to [http://localhost:9001](http://localhost:9001) (User: `minioadmin`, Pass: `minioadmin`) to check uploads in the `media-uploads` bucket.
-*   **MinIO CDN Endpoint**: [http://localhost:9000/media-uploads](http://localhost:9000/media-uploads)
+#### 3. Running Only Databases (Infrastructure)
 
-#### 4. Shitting Down
-To stop and clean up containers and volumes, run:
 ```bash
-npm run down
+make infra
+# equivalent: docker compose -f docker-compose.infra.yml up -d
 ```
+
+#### 4. Accessing Dashboards
+*   **Web app**: [http://localhost:3000](http://localhost:3000)
+*   **Admin panel**: [http://localhost:3005](http://localhost:3005)
+*   **RabbitMQ Portal**: [http://localhost:15672](http://localhost:15672) (User: `guest`, Pass: `guest`)
+*   **MinIO Console**: [http://localhost:9001](http://localhost:9001) (credentials from your `.env`)
+
+#### 5. Shutting Down
+```bash
+make down          # stop containers
+make clean         # stop AND wipe volumes (DESTRUCTIVE)
+```
+
+---
+
+### Production Deployment & Security
+
+The codebase ships with a production override that enables real authentication,
+restart policies, resource limits, and log rotation. Full step-by-step
+instructions (Google OAuth, SMS/OTP, TLS, backups) live in
+**[SETUP_TODO.md](./SETUP_TODO.md)**. In short:
+
+1. Set strong secrets and flip the auth flags in `.env`:
+   ```
+   AUTH_REQUIRED=true
+   ALLOW_MOCK_AUTH=false
+   DEV_MODE=false
+   JWT_SECRET=<64-char random>
+   PUBLIC_API_URL=https://api.yourdomain.com
+   CORS_ORIGINS=https://app.yourdomain.com,https://admin.yourdomain.com
+   ```
+2. Build & launch with the production override:
+   ```bash
+   make up-prod
+   # = docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+   ```
+
+**Security model (what changed from the prototype):**
+
+* **Signed JWTs** — login issues an HS256 token (`JWT_SECRET`, with expiry).
+  Frontends send it as `Authorization: Bearer …`.
+* **Enforcement is env-gated** — when `AUTH_REQUIRED=true`, services reject
+  unauthenticated requests and derive the actor from the verified token instead
+  of trusting client-supplied IDs (prevents identity spoofing).
+* **Admin panel login** — staff authenticate via `/api/v1/auth/admin/login`
+  (`ADMIN_USERNAME`/`ADMIN_PASSWORD`); admin-only routes require an admin token.
+* **Google OAuth verification** — set `GOOGLE_CLIENT_ID` to verify real Google
+  ID tokens server-side.
+* **OTP privacy** — codes are sent via SMS (Twilio) and never returned in API
+  responses unless `DEV_MODE=true`.
+* **Configurable origins/URLs** — API base URL and CORS origins are driven by
+  env vars, not hardcoded to localhost.
+* **Hardened containers** — non-root users, health checks, restart policies, and
+  per-service memory limits.
 
 ---
 
